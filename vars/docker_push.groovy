@@ -5,7 +5,7 @@ def call(String ProjectName, String ImageTag, String DockerHubuser){
     sh "docker login -u ${dockerHubUser} -p ${dockerHubPass}"
   }
   
-  sh "docker push ${dockerHubUser}/${ProjectName}:${ImageTag}"
+  sh "docker push ${dockerHubuser}/${ProjectName}:${ImageTag}"
   
   echo "Image pushed to DockerHub"
 }
