@@ -11,21 +11,47 @@ These files are imported into `Jenkinsfile` to simplify function calls and maint
 
 ## ⚙️ Usage in Jenkinsfile
 
-You can use these shared functions in any Jenkins pipeline by referencing them in your `Jenkinsfile`.
+We can use these shared functions in any Jenkins pipeline by referencing them in our `Jenkinsfile`.
 
 Example:
 
 ```groovy
-@Library('jenkins-shared-library') _
-
+@Library("Shared") _
 pipeline {
-    agent any
+    agent { label "Vinod" }
     stages {
-        stage('Example') {
-            steps {
-                script {
-                    // Call a shared function
-                    exampleStep()
+        stage(hello){
+            steps{
+                script{
+                    hello()
+                }
+            }
+        }
+        stage("Clone"){
+            steps{
+                script{
+                    clone("https://github.com/Sann-777/Django-notes-k8s.git","main")
+                }
+            }
+        }
+        stage("Build"){
+            steps{
+                script{
+                    docker_build("notes-app", "latest", "asxhazard")
+                }
+            }
+        }
+        stage("Push to DockerHub"){
+            steps{
+                script{
+                   docker_push("notes-app", "latest", "asxhazard") 
+                }
+            }
+        }
+        stage("Deploy"){
+            steps{
+                script{
+                    docker_compose()
                 }
             }
         }
@@ -43,11 +69,11 @@ pipeline {
 2. Import the library in your `Jenkinsfile` using:
 
    ```groovy
-   @Library('your-shared-lib-name') _
+   @Library('Shared') _
    ```
 
 3. Call the shared functions in your pipeline stages.
 
 ---
 
-✅ With this setup, my Jenkins pipelines can reuse common logic, making them cleaner, more modular, and easier to maintain.
+✅ With this setup, our Jenkins pipelines can reuse common logic, making them cleaner, more modular, and easier to maintain.
