@@ -1,5 +1,5 @@
 def call(){
-  echo "Scanning <path or image>"
+  echo "Scanning image"
   sh "trivy fs ."
   echo "✅ Scan complete"
 }
