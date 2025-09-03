@@ -1,85 +1,49 @@
-def call(Map config = [:]) {
-    echo "🔧 Running shared cache setup..."
+def call() {
+    // List of all services you want to install/cache
+    def services = [
+        [path: ".", name: "Root"],
+        [path: "frontend-microservice", name: "Frontend"],
+        [path: "microservices/api-gateway", name: "API Gateway"],
+        [path: "microservices/auth-service", name: "Auth Service"],
+        [path: "microservices/course-service", name: "Course Service"],
+        [path: "microservices/payment-service", name: "Payment Service"],
+        [path: "microservices/profile-service", name: "Profile Service"],
+        [path: "microservices/rating-service", name: "Rating Service"],
+        [path: "microservices/media-service", name: "Media Service"],
+        [path: "microservices/notification-service", name: "Notification Service"]
+    ]
 
-    // Default services list (you can override by passing config.services)
-    def services = config.get('services', [
-        'api-gateway',
-        'auth-service',
-        'course-service',
-        'payment-service',
-        'profile-service',
-        'rating-service',
-        'media-service',
-        'notification-service'
-    ])
+    echo "🚀 Starting Jenkins Dependency Caching Setup..."
 
-    // Cache root dependencies
-    if (fileExists('package.json')) {
-        def rootCacheKey = sh(
-            script: 'md5sum package.json | cut -d" " -f1 2>/dev/null || echo "no-root"',
-            returnStdout: true
-        ).trim()
-
-        cache(maxCacheSize: 500, caches: [
-            arbitraryFileCache(
-                path: 'node_modules',
-                fingerprint: "npm-root-${rootCacheKey}"
-            )
-        ]) {
-            if (!fileExists('node_modules')) {
-                echo "💾 Installing root dependencies..."
-                sh 'npm ci --prefer-offline'
-            } else {
-                echo "⚡ Using cached root dependencies"
-            }
-        }
-    }
-
-    // Cache frontend dependencies
-    if (fileExists('frontend-microservice/package.json')) {
-        def frontendCacheKey = sh(
-            script: 'md5sum frontend-microservice/package.json | cut -d" " -f1 2>/dev/null || echo "no-frontend"',
-            returnStdout: true
-        ).trim()
-
-        cache(maxCacheSize: 500, caches: [
-            arbitraryFileCache(
-                path: 'frontend-microservice/node_modules',
-                fingerprint: "npm-frontend-${frontendCacheKey}"
-            )
-        ]) {
-            if (!fileExists('frontend-microservice/node_modules')) {
-                echo "💾 Installing frontend dependencies..."
-                dir('frontend-microservice') {
-                    sh 'npm ci --prefer-offline'
-                }
-            } else {
-                echo "⚡ Using cached frontend dependencies"
-            }
-        }
-    }
-
-    // Cache each microservice dependencies
-    services.each { service ->
-        if (fileExists("microservices/${service}/package.json")) {
-            def serviceCacheKey = sh(
-                script: "md5sum microservices/${service}/package.json | cut -d' ' -f1 2>/dev/null || echo 'no-${service}'",
-                returnStdout: true
-            ).trim()
-
-            cache(maxCacheSize: 200, caches: [
-                arbitraryFileCache(
-                    path: "microservices/${service}/node_modules",
-                    fingerprint: "npm-${service}-${serviceCacheKey}"
-                )
-            ]) {
-                if (!fileExists("microservices/${service}/node_modules")) {
-                    echo "💾 Installing ${service} dependencies..."
-                    dir("microservices/${service}") {
-                        sh 'npm ci --prefer-offline'
+    // Cache global ~/.npm (so npm doesn’t re-download packages each run)
+    jobcacher(
+        caches: [[
+            $class: 'ArbitraryFileCache',
+            path: "${env.HOME}/.npm",
+            key: "npm-global-cache",
+            maxCacheSize: 1000
+        ]]
+    ) {
+        services.each { service ->
+            dir(service.path) {
+                if (fileExists("package.json")) {
+                    jobcacher(
+                        caches: [[
+                            $class: 'ArbitraryFileCache',
+                            path: "node_modules",
+                            key: "npm-${service.name.replaceAll(' ', '-')}-${env.BRANCH_NAME}",
+                            maxCacheSize: 500
+                        ]]
+                    ) {
+                        if (!fileExists("node_modules")) {
+                            echo "💾 Installing dependencies for ${service.name}..."
+                            sh "npm ci --cache ${env.HOME}/.npm --prefer-offline"
+                        } else {
+                            echo "⚡ Using cached dependencies for ${service.name}"
+                        }
                     }
                 } else {
-                    echo "⚡ Using cached ${service} dependencies"
+                    echo "⚠️  Skipping ${service.name} (no package.json found)"
                 }
             }
         }
