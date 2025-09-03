@@ -44,6 +44,7 @@ private void cacheRootDependencies(Map config) {
     
     dir(config.rootDir) {
         if (fileExists('package.json')) {
+            // CORRECTED: Use named parameters for arbitraryFileCache
             arbitraryFileCache(
                 path: "studynotion-root-deps-${env.BRANCH_NAME ?: 'main'}",
                 cacheValidityDecidingFile: 'package-lock.json',
@@ -95,6 +96,7 @@ private void cacheSingleService(String rootDir, String servicePath, String servi
         // Create cache key with service name for uniqueness
         def cacheKey = "studynotion-${servicePath.replace('/', '-')}-${env.BRANCH_NAME ?: 'main'}"
         
+        // CORRECTED: Use named parameters for arbitraryFileCache
         arbitraryFileCache(
             path: cacheKey,
             cacheValidityDecidingFile: 'package-lock.json',
@@ -149,40 +151,39 @@ private void installDependencies(String directory, String npmCacheDir, String se
 }
 
 /**
- * Check cache status for all services
+ * Check cache status for all services - FIXED: Now a method that can be called from post
  */
-def checkAllCacheStatus(Map params = [:]) {
-    def config = [
-        rootDir: params.rootDir ?: "${env.WORKSPACE}",
-        services: params.services ?: [
-            "microservices/api-gateway": "API Gateway",
-            "microservices/auth-service": "Auth Service",
-            // ... all your services
-            "frontend-microservice": "Frontend Service"
-        ]
+def checkAllCacheStatus() {
+    def services = [
+        "microservices/api-gateway": "API Gateway",
+        "microservices/auth-service": "Auth Service",
+        "microservices/course-service": "Course Service",
+        "microservices/payment-service": "Payment Service",
+        "microservices/profile-service": "Profile Service",
+        "microservices/rating-service": "Rating Service",
+        "microservices/media-service": "Media Service",
+        "microservices/notification-service": "Notification Service",
+        "frontend-microservice": "Frontend Service"
     ]
 
     echo "📋 StudyNotion Cache Status Report"
     echo "========================================================"
     
     // Check root
-    dir(config.rootDir) {
-        if (fileExists('package.json')) {
-            def size = getDirectorySize('node_modules')
-            echo "📊 Root: node_modules=${fileExists('node_modules')}, size=${size}"
-        }
+    if (fileExists('package.json')) {
+        def size = getDirectorySize('node_modules')
+        echo "📊 Root: node_modules=${fileExists('node_modules')}, size=${size}"
     }
     
     // Check each service
-    config.services.each { servicePath, serviceName ->
-        def fullPath = "${config.rootDir}/${servicePath}"
-        dir(fullPath) {
-            if (fileExists('package.json')) {
+    services.each { servicePath, serviceName ->
+        if (fileExists(servicePath + '/package.json')) {
+            dir(servicePath) {
                 def size = getDirectorySize('node_modules')
                 echo "📊 ${serviceName}: node_modules=${fileExists('node_modules')}, size=${size}"
-            } else {
-                echo "📊 ${serviceName}: ❌ package.json not found"
             }
+        } else {
+            echo "📊 ${serviceName}: ❌ package.json not found"
         }
     }
 }
@@ -199,17 +200,4 @@ private String getDirectorySize(String path) {
     } catch (Exception e) {
         return '0K'
     }
-}
-
-/**
- * Clear all caches (for maintenance)
- */
-def clearAllCaches(Map params = [:]) {
-    def config = [
-        rootDir: params.rootDir ?: "${env.WORKSPACE}"
-    ]
-    
-    echo "🧹 Clearing all StudyNotion caches"
-    echo "Note: Caches will be automatically rebuilt on next run"
-    echo "========================================================"
 }
