@@ -1,5 +1,7 @@
 def call(Map config = [:]) {
-    // Default list of microservices
+    echo "🔧 Running shared cache setup..."
+
+    // Default services list (you can override by passing config.services)
     def services = config.get('services', [
         'api-gateway',
         'auth-service',
@@ -11,48 +13,77 @@ def call(Map config = [:]) {
         'notification-service'
     ])
 
-    pipeline {
-        agent any
-        stages {
-            stage('Cache Dependencies') {
-                steps {
-                    script {
-                        echo "🔧 Setting up dependency caching..."
+    // Cache root dependencies
+    if (fileExists('package.json')) {
+        def rootCacheKey = sh(
+            script: 'md5sum package.json | cut -d" " -f1 2>/dev/null || echo "no-root"',
+            returnStdout: true
+        ).trim()
 
-                        // Cache global npm cache
-                        cache(path: "${env.HOME}/.npm", key: "npm-global-cache") {
-                            echo "⚡ Using global npm cache"
-                        }
+        cache(maxCacheSize: 500, caches: [
+            arbitraryFileCache(
+                path: 'node_modules',
+                fingerprint: "npm-root-${rootCacheKey}"
+            )
+        ]) {
+            if (!fileExists('node_modules')) {
+                echo "💾 Installing root dependencies..."
+                sh 'npm ci --prefer-offline'
+            } else {
+                echo "⚡ Using cached root dependencies"
+            }
+        }
+    }
 
-                        // Root dependencies
-                        cache(path: "node_modules", key: "npm-root-${env.BRANCH_NAME}") {
-                            sh 'npm ci --cache ~/.npm --prefer-offline'
-                        }
+    // Cache frontend dependencies
+    if (fileExists('frontend-microservice/package.json')) {
+        def frontendCacheKey = sh(
+            script: 'md5sum frontend-microservice/package.json | cut -d" " -f1 2>/dev/null || echo "no-frontend"',
+            returnStdout: true
+        ).trim()
 
-                        // Frontend dependencies
-                        if (fileExists("frontend-microservice/package.json")) {
-                            dir("frontend-microservice") {
-                                cache(path: "node_modules", key: "npm-frontend-${env.BRANCH_NAME}") {
-                                    sh 'npm ci --cache ~/.npm --prefer-offline'
-                                }
-                            }
-                        }
+        cache(maxCacheSize: 500, caches: [
+            arbitraryFileCache(
+                path: 'frontend-microservice/node_modules',
+                fingerprint: "npm-frontend-${frontendCacheKey}"
+            )
+        ]) {
+            if (!fileExists('frontend-microservice/node_modules')) {
+                echo "💾 Installing frontend dependencies..."
+                dir('frontend-microservice') {
+                    sh 'npm ci --prefer-offline'
+                }
+            } else {
+                echo "⚡ Using cached frontend dependencies"
+            }
+        }
+    }
 
-                        // Microservices dependencies
-                        services.each { service ->
-                            if (fileExists("microservices/${service}/package.json")) {
-                                dir("microservices/${service}") {
-                                    cache(path: "node_modules", key: "npm-${service}-${env.BRANCH_NAME}") {
-                                        sh 'npm ci --cache ~/.npm --prefer-offline'
-                                    }
-                                }
-                            }
-                        }
+    // Cache each microservice dependencies
+    services.each { service ->
+        if (fileExists("microservices/${service}/package.json")) {
+            def serviceCacheKey = sh(
+                script: "md5sum microservices/${service}/package.json | cut -d' ' -f1 2>/dev/null || echo 'no-${service}'",
+                returnStdout: true
+            ).trim()
 
-                        echo "✅ Dependency caching complete!"
+            cache(maxCacheSize: 200, caches: [
+                arbitraryFileCache(
+                    path: "microservices/${service}/node_modules",
+                    fingerprint: "npm-${service}-${serviceCacheKey}"
+                )
+            ]) {
+                if (!fileExists("microservices/${service}/node_modules")) {
+                    echo "💾 Installing ${service} dependencies..."
+                    dir("microservices/${service}") {
+                        sh 'npm ci --prefer-offline'
                     }
+                } else {
+                    echo "⚡ Using cached ${service} dependencies"
                 }
             }
         }
     }
+
+    echo "✅ Dependency caching complete!"
 }
